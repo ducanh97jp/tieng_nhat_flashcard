@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>JLPT Flashcards</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<h1>JLPT Flashcards</h1>
+
+<select id="level">
+    <option>N5</option>
+    <option>N4</option>
+    <option>N3</option>
+    <option>N2</option>
+    <option>N1</option>
+</select>
+
+<input type="file" id="excelFile">
+
+<div class="card" id="card">
+    Chọn file Excel
+</div>
+
+<div class="buttons">
+    <button id="speak">🔊 Phát âm</button>
+    <button id="known">✅ Đã nhớ</button>
+    <button id="unknown">❌ Chưa nhớ</button>
+    <button id="next">➡ Tiếp</button>
+</div>
+
+<div id="stats"></div>
+
+<script src="app.js"></script>
+
+</body>
+</html>

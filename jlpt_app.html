@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>JLPT Flashcards Pro</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+body{
+    font-family: Arial;
+    text-align:center;
+    background:#f4f4f4;
+}
+
+.card{
+    width:520px;
+    height:220px;
+    margin:20px auto;
+    background:white;
+    border-radius:15px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    font-size:34px;
+    cursor:pointer;
+    box-shadow:0 5px 15px rgba(0,0,0,0.2);
+    padding:10px;
+}
+
+input{
+    width:300px;
+    padding:10px;
+    font-size:18px;
+}
+
+button{
+    padding:10px 15px;
+    margin:5px;
+    font-size:16px;
+}
+
+#result{
+    margin-top:10px;
+    font-size:20px;
+}
+
+.stats{
+    margin-top:10px;
+}
+input{
+    width:320px;
+    padding:10px;
+    font-size:18px;
+    border:2px solid #ccc;
+    border-radius:6px;
+    outline:none;
+    transition:0.2s;
+}
+
+input.correct{
+    border-color:green;
+}
+
+input.wrong{
+    border-color:red;
+}
+
+input.close{
+    border-color:orange;
+}
+</style>
+</head>
+<body>
+
+<h1>JLPT Flashcards Pro</h1>
+
+<input type="file" id="file">
+<div class="card" id="card">
+    Upload file Excel
+</div>
+
+<br>
+
+<input type="text" id="answer" placeholder="Nhập tiếng Nhật...">
+
+<br>
+<button id="reshuffle">🔀 Trộn lại</button>
+<button id="next">Tiếp</button>
+<button id="speak">🔊</button>
+
+<div id="result"></div>
+<div class="stats" id="stats"></div>
+
+<script>
+
+let cards = [];
+let current = 0;
+let wrongList = [];
+let shuffled = false;
+let originalCards = [];
+let changingCard = false;
+
+document.getElementById("file").addEventListener("change", loadExcel);
+
+async function loadExcel(e){
+
+    const file = e.target.files[0];
+    const data = await file.arrayBuffer();
+
+    const wb = XLSX.read(data);
+
+    const ws = wb.Sheets[wb.SheetNames[0]];
+
+    cards = XLSX.utils.sheet_to_json(ws);
+
+    // lưu thứ tự gốc
+    originalCards = [...cards];
+
+    current = 0;
+
+    showCard();
+
+    document.getElementById("answer").value = "";
+    document.getElementById("result").innerHTML = "";
+}
+
+// ================== HIỂN THỊ ==================
+function showCard(){
+
+    if(cards.length === 0) return;
+
+    isFront = true;
+
+    document.getElementById("card").innerText =
+        cards[current].Vietnamese;
+}
+
+// ================== NORMALIZE ==================
+function normalize(t){
+    return t
+        .toLowerCase()
+        .replace(/\s+/g,'')
+        .trim();
+}
+
+// ================== KATA -> HIRA CONVERT ==================
+function hiraToKata(str){
+    return str.replace(/[\u3041-\u3096]/g,
+        c => String.fromCharCode(c.charCodeAt(0)+0x60)
+    );
+}
+
+// ================== LEVENSHTEIN ==================
+function levenshtein(a,b){
+    const dp=[];
+    for(let i=0;i<=b.length;i++) dp[i]=[i];
+    for(let j=0;j<=a.length;j++) dp[0][j]=j;
+
+    for(let i=1;i<=b.length;i++){
+        for(let j=1;j<=a.length;j++){
+            dp[i][j]= b[i-1]==a[j-1] ?
+                dp[i-1][j-1] :
+                Math.min(
+                    dp[i-1][j-1]+1,
+                    dp[i][j-1]+1,
+                    dp[i-1][j]+1
+                );
+        }
+    }
+    return dp[b.length][a.length];
+}
+
+// ================== CHECK ANSWER ==================
+const inputEl = document.getElementById("answer");
+
+inputEl.addEventListener("input", checkAnswer);
+
+function checkAnswer(){
+
+    // CHẶN input khi đang chuyển card
+    if(changingCard) return;
+
+    const input = normalize(inputEl.value);
+
+    const jp = normalize(cards[current].Japanese || "");
+    const kana = normalize(cards[current].Kana || "");
+    const kata = normalize(hiraToKata(kana));
+
+    const answers = [jp, kana, kata];
+
+    inputEl.classList.remove("correct","wrong","close");
+
+    if(input.length === 0) return;
+
+    // ĐÚNG
+    if(answers.includes(input)){
+
+        changingCard = true;
+
+        inputEl.classList.add("correct");
+
+        updateStats(true);
+
+        setTimeout(()=>{
+
+            nextCard();
+
+            changingCard = false;
+
+        },400);
+
+        return;
+    }
+
+    // GẦN ĐÚNG
+    let min = 999;
+
+    for(let a of answers){
+        min = Math.min(min, levenshtein(input,a));
+    }
+
+    if(min <= 1){
+        inputEl.classList.add("close");
+        return;
+    }
+
+    // SAI
+    inputEl.classList.add("wrong");
+}
+
+// ================== RESULT ==================
+function showResult(text,color){
+    document.getElementById("result").innerHTML =
+        `<div style="color:${color}">${text}</div>`;
+}
+
+// ================== NEXT ==================
+document.getElementById("next").onclick = nextCard;
+
+function nextCard(){
+
+    current++;
+
+    if(current >= cards.length)
+        current = 0;
+
+    showCard();
+
+    inputEl.value = "";
+
+    inputEl.classList.remove(
+        "correct",
+        "wrong",
+        "close"
+    );
+
+    document.getElementById("result").innerHTML = "";
+
+    // reset IME
+    inputEl.blur();
+
+    setTimeout(()=>{
+        inputEl.focus();
+    },10);
+}
+
+function nextAuto(){
+    setTimeout(nextCard,1000);
+}
+
+// ================== SPEAK ==================
+document.getElementById("speak").onclick = ()=>{
+
+    let u = new SpeechSynthesisUtterance(
+        cards[current].Japanese
+    );
+
+    u.lang="ja-JP";
+    speechSynthesis.speak(u);
+};
+
+// ================== STATS ==================
+let correct=0;
+let total=0;
+
+function updateStats(ok){
+    total++;
+    if(ok) correct++;
+
+    document.getElementById("stats").innerHTML =
+        `Đúng: ${correct} / ${total} (${Math.round(correct/total*100)}%)`;
+}
+function shuffle(array) {
+
+    for (let i = array.length - 1; i > 0; i--) {
+
+        const j = Math.floor(Math.random() * (i + 1));
+
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+
+    return array;
+}
+document.getElementById("reshuffle").onclick = ()=>{
+
+    // lưu card hiện tại
+    const currentCard = cards[current];
+
+    if(!shuffled){
+
+        // bật chế độ trộn
+        cards = shuffle([...cards]);
+
+        shuffled = true;
+
+        document.getElementById("reshuffle").innerText =
+            "↩ Bỏ trộn";
+
+    }else{
+
+        // quay về thứ tự gốc
+        cards = [...originalCards];
+
+        shuffled = false;
+
+        document.getElementById("reshuffle").innerText =
+            "🔀 Trộn";
+    }
+
+    // tìm lại vị trí card hiện tại
+    current = cards.findIndex(
+        c =>
+            c.Japanese === currentCard.Japanese &&
+            c.Vietnamese === currentCard.Vietnamese
+    );
+
+    // nếu không tìm thấy
+    if(current < 0) current = 0;
+
+    showCard();
+
+    document.getElementById("answer").value = "";
+    document.getElementById("result").innerHTML = "";
+};
+let isFront = true;
+
+document.getElementById("card").addEventListener("click", ()=>{
+
+    if(cards.length === 0) return;
+
+    const card = document.getElementById("card");
+
+    if(isFront){
+
+        const jp = cards[current].Japanese || cards[current].Kana;
+        const kana = cards[current].Kana || "";
+
+        card.innerHTML = `
+            <div style="font-size:42px">
+                ${jp}
+            </div>
+            <div style="font-size:24px;color:gray">
+                ${kana}
+            </div>
+        `;
+
+    }else{
+
+        card.innerText =
+            cards[current].Vietnamese;
+    }
+
+    isFront = !isFront;
+});
+
+</script>
+
+</body>
+</html>
